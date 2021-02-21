@@ -70,8 +70,14 @@ def plot_paths(paths, image, color=(0,0,0), s=2, thickness=1):
 
     return image
 
-def mark(x, y, image, s=2):
-    cv2.circle(image, (int(x)*s, int(y)*s), 3, (0, 0, 255), thickness=-1)
+def mark(x, y, image, s=2, size=1):
+    cv2.circle(
+        image,
+        (int(x)*s, int(y)*s),
+        size,
+        (0, 0, 255),
+        thickness=-1
+    )
 
 def circle_point(x, y, r, a):
     return (
@@ -79,34 +85,46 @@ def circle_point(x, y, r, a):
         y+sin(a)*r
     )
 
+def _circle(x, y, radiuses, angles):
+    ps = []
+    for r, a in zip(radiuses, angles):
+        ps.append(
+            circle_point(x, y, r, a)
+        )
+    return ps
+
+def shaky_line(p1, p2):
+    a = line_angle(p1, p2)
+    splits = np.linspace(0, 1, 5)
+    bps = []
+    for i, s in enumerate(splits[1:-1]):
+        p = split_on(p1, p2, s)
+        #mark(*p1, image, size=1)
+        bps.append(
+            circle_point(*p, randint(0, 10), a+(-1)**i*pi/2)
+        )
+
+    #mark(*p1, image, size=2)
+    #mark(*p2, image, size=2)
+
+    bps.insert(0, p1)
+    bps.append(p2)
+
+    return bezier(bps, n=10)
+
 image = create_image()
 
-paths = [
-    bezier([
-        (10, 10),
-        (50, 150),
-        (290, 200)
-    ])
-]
+precision = 20
+radiuses = [randint(10, 90) for x in range(precision-1)]
+radiuses.append(radiuses[0])
+angles = np.linspace(0, 2*pi, precision)
 
-l1 = [(10, 10), (290, 208)]
-a = line_angle(*l1)
-splits = np.linspace(0, 1, 400)
-bps = []
-for i, s in enumerate(splits[1:-1]):
-    p = split_on(l1[0], l1[1], s)
-    d = distance(*l1)
-    p1 = circle_point(*p, randint(0, 20), a+(-1)**i*pi/2)
-    #mark(*p1, image)
-    bps.append(p1)
+c1 = _circle(150, 109, radiuses, angles)
+cps = list(zip(c1, c1[1:]))
 
-mark(*l1[0], image)
-mark(*l1[1], image)
-bps.insert(0, l1[0])
-bps.append(l1[1])
+c2 = [shaky_line(p1, p2) for (p1, p2) in cps]
 
-paths = [bezier(bps)]
-
+paths = c2
 image = plot_paths(paths, image)
 
 show_image(image)
