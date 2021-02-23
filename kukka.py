@@ -9,128 +9,6 @@ from random import *
 
 _take2 = lambda ps: list(map(lambda p: [p[0], p[1]], ps))
 
-def bezier(ps, n=100):
-    def _bpns(ps, n=100):
-        return np.array(
-            [_bernstein(i, len(ps)-1, np.linspace(0.0, 1.0, n))
-             for i in range(0, len(ps))
-            ]
-        )
-
-    def _bernstein(i, n, t):
-        return comb(n, i)*(t**(n-i))*(1-t)**i
-
-    return _take2(
-        zip(
-            np.array([p[0] for p in ps])@_bpns(ps, n),
-            np.array([p[1] for p in ps])@_bpns(ps, n)
-        )
-    )
-
-def distance(p1, p2):
-    return sqrt(
-        (p2[0]-p1[0])**2 +
-        (p2[1]-p1[1])**2
-    )
-
-def scale(ps, s):
-    return [[p[0]*s, p[1]*s] for p in ps]
-
-def line_angle(p1, p2):
-    return atan2(p2[1]-p1[1], p2[0]-p1[0])
-
-def split_on(p1, p2, s):
-    return [
-        (p2[0]-p1[0])*s + p1[0],
-        (p2[1]-p1[1])*s + p1[1]
-    ]
-
-def create_image(width=300, height=218, s=2):
-    img = np.zeros((height*s, width*s, 3), np.uint8)
-    img[:,:] = (255, 255, 255)
-    return img
-
-def show_image(image, rotation=-90):
-    cv2.imshow(
-        'image',
-        ndimage.rotate(image, rotation)
-    )
-    if cv2.waitKey(): cv2.destroyAllWindows()
-
-def plot_paths(paths, image, color=(0,0,0), s=2, thickness=1):
-    paths = map(lambda ps: scale(ps, s), paths)
-    for path in paths:
-        for p1, p2 in zip(path, path[1:]):
-            cv2.line(image,
-                (int(p1[0]), int(p1[1])),
-                (int(p2[0]), int(p2[1])),
-                color, thickness=thickness
-            )
-
-    return image
-
-def mark(x, y, image, s=2, size=1):
-    cv2.circle(
-        image,
-        (int(x)*s, int(y)*s),
-        size,
-        (0, 0, 255),
-        thickness=-1
-    )
-
-def circle_point(x, y, r, a):
-    return (
-        x+cos(a)*r,
-        y+sin(a)*r
-    )
-
-def _circle(x, y, radiuses, angles):
-    ps = []
-    for r, a in zip(radiuses, angles):
-        ps.append(
-            circle_point(x, y, r, a)
-        )
-    return ps
-
-def line_variations(p1, p2, vs):
-    a = line_angle(p1, p2)
-    splits = np.linspace(0, 1, len(vs)+2)
-    bps = []
-    for i, s in enumerate(splits[1:-1]):
-        p = split_on(p1, p2, s)
-        pn = circle_point(*p, vs[i], a+pi/2)
-#        mark(*pn, image, size=1)
-        bps.append(pn)
-
-#    mark(*p1, image, size=2)
-#    mark(*p2, image, size=2)
-
-    bps.insert(0, p1)
-    bps.append(p2)
-
-    return bps
-
-def shaky_line(p1, p2, variations, bp=10):
-    bps = line_variations(p1, p2, variations)
-    return bezier(bps, n=bp)
-
-def _c0():
-    precision = 4
-    radiuses = [10+x*10 for x in range(int(precision/2))]
-    radiuses += reversed(radiuses)
-
-    angles = np.linspace(0, 2*pi, precision)
-
-    c1 = _circle(150, 109, radiuses, angles)
-    cps = list(zip(c1, c1[1:]))
-
-    #variations = [randint(-50, 50) for i in range(10)]
-
-    return [
-        shaky_line(p1, p2, [randint(-50, 50) for i in range(10)], bp=10)
-        for (p1, p2) in cps
-    ]
-
 flatten = lambda t: [item for sublist in t for item in sublist]
 
 _R = lambda a: np.array(
@@ -158,105 +36,173 @@ _VS = lambda s: np.array(
 )
 
 rotate_around = lambda ps, p0, a: _take2(list(map(
-    lambda p: _T(*p0)@_R(a)@_T(-p0[0], -p0[1])@(p+[1]),
-    ps
+    lambda p: _T(*p0)@_R(a)@_T(-p0[0], -p0[1])@(p+[1]), ps
 )))
 
 shear_around = lambda ps, p0, s: _take2(list(map(
-    lambda p: _T(*p0)@_VS(s)@_T(-p0[0], -p0[1])@(p+[1]),
-    ps
+    lambda p: _T(*p0)@_VS(s)@_T(-p0[0], -p0[1])@(p+[1]), ps
 )))
 
-def leaf(p1, p2, rotation, shear_amount):
-    global image
+bernstein = lambda i, n, t: comb(n, i)*(t**(n-i))*(1-t)**i
 
-    #mark(*p1, image, size=5)
+_bpns = lambda ps, n=100: np.array([
+    bernstein(i, len(ps)-1, np.linspace(0.0, 1.0, n))
+    for i in range(0, len(ps))
+])
 
-    d = distance(p1, p2)
+bezier = lambda ps, n=100: _take2(zip(
+    np.array([p[0] for p in ps])@_bpns(ps, n),
+    np.array([p[1] for p in ps])@_bpns(ps, n)
+))
 
-    base_variations1 = [randint(0, 30-i*6) for i in range(5)]
-    base_variations2 = list(map(lambda x: -x, base_variations1))
+distance = lambda p1, p2: sqrt((p2[0]-p1[0])**2 + (p2[1]-p1[1])**2)
 
-    sl1 = bezier(line_variations(p1, p2, base_variations1), n=6)
-    sl2 = bezier(line_variations(p1, p2, base_variations2), n=6)
+scale = lambda ps, s: [[p[0]*s, p[1]*s] for p in ps]
 
-    sl1 = shear_around(sl1, p1, shear_amount)
-    sl2 = shear_around(sl2, p1, shear_amount)
+line_angle = lambda p1, p2: atan2(p2[1]-p1[1], p2[0]-p1[0])
 
-    sl1 = rotate_around(sl1, p1, rotation)
-    sl2 = rotate_around(sl2, p1, rotation)
+split_on = lambda p1, p2, s: [(p2[0]-p1[0])*s + p1[0], (p2[1]-p1[1])*s + p1[1]]
 
-    #image = plot_paths([list(reversed(sl1))+sl2], image, color=(0, 0, 255))
+circle_point = lambda x, y, r, a: (x+cos(a)*r, y+sin(a)*r)
 
-    vi = int(d/7)
+circle = lambda x, y, radiuses, angles: [
+    circle_point(x, y, r, a) for r, a in zip(radiuses, angles)
+]
 
-    vs2 = [randint(-vi, vi) for i in range(10)]
-    vs3 = [randint(-vi, vi) for i in range(10)]
+_line_variations = lambda p1, p2, vs, a: [p1]+[
+    circle_point(*split_on(p1, p2, s), vs[i], a+pi/2)
+    for i, s in enumerate(np.linspace(0, 1, len(vs)+2)[1:-1])
+]+[p2]
 
-    cps1 = list(zip(sl1, sl1[1:]))
-    cps2 = list(zip(sl2, sl2[1:]))
+line_variations = lambda p1, p2, vs: _line_variations(
+    p1, p2, vs, line_angle(p1, p2)
+)
 
-    l1 = [shaky_line(p1, p2, vs2, 100) for (p1, p2) in reversed(cps1)]
-    l2 = [shaky_line(p1, p2, vs3, 100) for (p1, p2) in reversed(cps2)]
+blv = lambda p1, p2, vs, n: bezier(line_variations(p1, p2, vs), n=n)
 
-    return list(reversed(flatten(l2)))+flatten(l1)
+_rasablv = lambda p1, p2, r, s, n, vs: rotate_around(shear_around(
+    blv(p1, p2, vs, n), p1, s), p1, r)
 
-def stem(p1, p2):
+mblv = lambda vs, ps, n=50: flatten([
+    reversed(blv(p1, p2, vs, n))
+    for (p1, p2) in zip(ps, ps[1:])
+])
 
-    base_variations = [randint(-20, 20) for i in range(5)]
-    base = bezier(line_variations(p1, p2, base_variations), n=6)
+_neg = lambda xs: list(map(lambda x: -x, xs))
 
-    return base
+leaf = lambda p1, p2, r, s, bvs, bn, e1, e2: list(reversed(
+    mblv(e2, _rasablv(p1, p2, r, s, bn, _neg(bvs)))
+))+ mblv(_neg(e1), _rasablv(p1, p2, r, s, bn, bvs))
 
-#paths = _c0()
-#paths = leaf((50, 109), (100, 109))
+rug = lambda a, b, n: lambda: [np.random.uniform(a, b) for i in range(n)]
 
-def create_plant():
-    image = create_image()
+def _create_plant(p1, p2,
+    stem_variation_generator,
+    base_variations_generator,
+    stem_edge_generator,
+    edge_variation_generator_1,
+    edge_variation_generator_2,
+    rotation_generator,
+    shear_generator,
+    base_precision_generator,
+    stem_precision_generator,
+    depth=0):
+    if depth==2: return []
+
+    length = distance(p1, p2)/2
+    _stem = blv(p1, p2, stem_variation_generator(length)(), n=stem_precision_generator())
+
+    stem = flatten([
+        reversed(blv(p1, p2, stem_edge_generator(length)(), 100))
+        for (p1, p2) in zip(_stem, _stem[1:])
+    ])
 
     paths = []
-    _stem = stem((50, 109), (280, 109))
+    paths.append(stem)
 
-    paths.append(_stem)
-    #mark(*stem[1], image, size=5)
+    for i, (_p1, _p2) in enumerate(zip(_stem, _stem[1:])):
+        lr = -1 if randint(0, 1) == 1 else 1
 
-    for i in range(1, 6):
-        paths.append(
-            leaf(
-                _stem[i], (_stem[i][0], _stem[i][1]-(80-i*10)),
-                rotation=pi/randint(4, 6),
-                shear_amount=random()
+        for i in range(randint(0, 2)):
+            lr = -lr
+            l = length/((i+2)**1.05)
+
+            _leaf = leaf(
+                _p2, circle_point(*_p2, l, line_angle(_p1, _p2)+lr*pi/2),
+                r=rotation_generator(),
+                s=shear_generator(),
+                bvs=base_variations_generator(),
+                bn=base_precision_generator(),
+                e1=edge_variation_generator_1(),
+                e2=edge_variation_generator_2()
             )
-        )
+            paths.append(_leaf)
 
-        paths.append(
-            leaf(
-                _stem[i], (_stem[i][0], _stem[i][1]+(80-i*10)),
-                rotation=-pi/randint(4, 6),
-                shear_amount=random()
+    return paths
+
+def create_plant(p1, p2):
+
+    return _create_plant(p1, p2,
+        stem_variation_generator = lambda length: rug(-length/4, length/4, 2),
+        stem_precision_generator = lambda: 5,
+        stem_edge_generator = lambda length: rug(-10, 10, int(length/10)),
+        base_variations_generator = rug(0, 50, 5),
+        base_precision_generator = lambda: 3,
+        edge_variation_generator_1 = rug(0, 10, 20),
+        edge_variation_generator_2 = rug(0, 10, 20),
+        rotation_generator = lambda: np.random.uniform(-pi/2, pi/4),
+        shear_generator = lambda: random(),
+    )
+
+##########################################
+
+def create_image(width=300, height=218, s=2):
+    img = np.zeros((height*s, width*s, 3), np.uint8)
+    img[:,:] = (255, 255, 255)
+    return img
+
+def show_image(image, rotation=-90):
+    cv2.imshow('image', ndimage.rotate(image, rotation))
+    if cv2.waitKey(): cv2.destroyAllWindows()
+
+def plot_paths(paths, image, color=(0,0,0), s=2, thickness=1):
+    paths = map(lambda ps: scale(ps, s), paths)
+    for path in paths:
+        for p1, p2 in zip(path, path[1:]):
+            cv2.line(image,
+                (int(p1[0]), int(p1[1])),
+                (int(p2[0]), int(p2[1])),
+                color, thickness=thickness
             )
-        )
-
-    image = plot_paths(paths, image)
 
     return image
 
+def mark(x, y, image, s=2, size=1):
+    cv2.circle(
+        image,
+        (int(x)*s, int(y)*s),
+        size,
+        (0, 0, 255),
+        thickness=-1
+    )
+
 import matplotlib.pyplot as plt
 
-w=2
-h=2
-fig=plt.figure(figsize=(8, 8))
+fig = plt.figure(figsize=(8, 8))
 columns = 2
 rows = 2
-for i in range(1, columns*rows +1):
+for i in range(1, columns*rows+1):
 
-    img = create_plant()
-    img = cv2.transpose(img)
+    image = create_image()
+
+    plant = create_plant((50, 109), (280, 109))
+
+    image = plot_paths(plant, image)
+    image = cv2.transpose(image)
 
     fig.add_subplot(rows, columns, i)
-    plt.imshow(img)
+    plt.imshow(image)
     plt.axis('off')
 
 plt.show()
-
 #show_image(image)
