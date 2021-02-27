@@ -83,76 +83,85 @@ blv = lambda p1, p2, vs, n: bezier(line_variations(p1, p2, vs), n=n)
 _rasablv = lambda p1, p2, r, s, n, vs: rotate_around(shear_around(
     blv(p1, p2, vs, n), p1, s), p1, r)
 
-mblv = lambda vs, ps, n=50: flatten([
-    reversed(blv(p1, p2, vs, n))
-    for (p1, p2) in zip(ps, ps[1:])
-])
-
 _neg = lambda xs: list(map(lambda x: -x, xs))
 
-leaf = lambda p1, p2, r, s, bvs, bn, e1, e2: list(reversed(
-    mblv(e2, _rasablv(p1, p2, r, s, bn, _neg(bvs)))
-))+ mblv(_neg(e1), _rasablv(p1, p2, r, s, bn, bvs))
-
-rug = lambda a, b, n: lambda: [np.random.uniform(a, b) for i in range(n)]
+leaf = lambda p1, p2, r, s, bvs, bn, sm: list(reversed(
+    smooth_variation(_rasablv(p1, p2, r, s, bn, _neg(bvs)), sm)
+))+ smooth_variation(_rasablv(p1, p2, r, s, bn, bvs), sm)
 
 def _create_plant(p1, p2,
-    stem_variation_generator,
-    base_variations_generator,
-    stem_edge_generator,
-    edge_variation_generator_1,
-    edge_variation_generator_2,
-    rotation_generator,
-    shear_generator,
-    base_precision_generator,
-    stem_precision_generator,
-    depth=0):
-    if depth==2: return []
+    stem_base_mod,
+    stem_base_precision,
+    stem_stroke_mod,
+    leaf_base_mod,
+    leaf_base_precision,
+    leaf_stroke_mod,
+    leaf_rotation,
+    leaf_shear):
 
-    length = distance(p1, p2)/2
-    _stem = blv(p1, p2, stem_variation_generator(length)(), n=stem_precision_generator())
+    length = distance(p1, p2)/3
+    _stem = blv(p1, p2, stem_base_mod(length)(), n=stem_base_precision())
 
-    stem = flatten([
-        reversed(blv(p1, p2, stem_edge_generator(length)(), 100))
-        for (p1, p2) in zip(_stem, _stem[1:])
-    ])
+    stem = smooth_variation(_stem, stem_stroke_mod)
 
     paths = []
     paths.append(stem)
 
     for i, (_p1, _p2) in enumerate(zip(_stem, _stem[1:])):
         lr = -1 if randint(0, 1) == 1 else 1
+        if i==len(_stem)-2: continue
 
-        for i in range(randint(0, 2)):
+        for j in range(randint(1, 2)):
             lr = -lr
-            l = length/((i+2)**1.05)
+            l = (length/8)/((i+1)/10)
 
             _leaf = leaf(
                 _p2, circle_point(*_p2, l, line_angle(_p1, _p2)+lr*pi/2),
-                r=rotation_generator(),
-                s=shear_generator(),
-                bvs=base_variations_generator(),
-                bn=base_precision_generator(),
-                e1=edge_variation_generator_1(),
-                e2=edge_variation_generator_2()
+                r=leaf_rotation(-lr),
+                s=leaf_shear(),
+                bvs=leaf_base_mod(),
+                bn=leaf_base_precision(),
+                sm=leaf_stroke_mod,
             )
+
+            paths.append([[5, 5], [0, 0]])
+            paths.append([[0, 5], [5, 0]])
             paths.append(_leaf)
 
     return paths
 
-def create_plant(p1, p2):
-
+def create_plant1(p1, p2):
     return _create_plant(p1, p2,
-        stem_variation_generator = lambda length: rug(-length/4, length/4, 2),
-        stem_precision_generator = lambda: 5,
-        stem_edge_generator = lambda length: rug(-10, 10, int(length/10)),
-        base_variations_generator = rug(0, 50, 5),
-        base_precision_generator = lambda: 3,
-        edge_variation_generator_1 = rug(0, 10, 20),
-        edge_variation_generator_2 = rug(0, 10, 20),
-        rotation_generator = lambda: np.random.uniform(-pi/2, pi/4),
-        shear_generator = lambda: random(),
+        stem_base_mod = lambda length: lambda: [np.random.uniform(-10, 10) for i in range(2)],
+        stem_base_precision = lambda: 6,
+        stem_stroke_mod = lambda: [np.random.uniform(-20, 20) for i in range(5)],
+
+        leaf_base_mod = lambda: [np.random.uniform(-50, 50) for i in range(5)],
+        leaf_base_precision = lambda: 3,
+        leaf_stroke_mod = lambda: [np.random.uniform(-10, 10) for i in range(3)],
+
+        leaf_shear = lambda: (random()-0.5)*2,
+        leaf_rotation = lambda lr: np.random.uniform(lr*pi/3, lr*pi/10),
     )
+
+def smooth_variation(ps, mod):
+    _ps = []
+    for i, (p1, p2) in enumerate(zip(ps, ps[1:])):
+        lvs = line_variations(p1, p2, mod())
+
+        if i>0:
+            lvs[1] = circle_point(
+                *last_p,
+                distance(last_p, last_v),
+                atan2(last_p[1]-last_v[1], last_p[0]-last_v[0])
+            )
+
+        _ps += reversed(bezier(lvs, n=10))
+
+        last_v = lvs[-2]
+        last_p = lvs[-1]
+
+    return _ps
 
 ##########################################
 
@@ -186,6 +195,22 @@ def mark(x, y, image, s=2, size=1):
         thickness=-1
     )
 
+image = create_image()
+
+paths = []
+paths.append([[5, 5], [0, 0]])
+paths.append([[0, 5], [5, 0]])
+paths += create_plant1((50, 109), (280, 109))
+#plant += create_plant1((50, 150), (280, 109))
+#plant = foobar()
+
+image = plot_paths(paths, image)
+show_image(image)
+
+f = open('kukka18.json', 'w')
+f.write(str(paths))
+
+"""
 import matplotlib.pyplot as plt
 
 fig = plt.figure(figsize=(8, 8))
@@ -195,7 +220,8 @@ for i in range(1, columns*rows+1):
 
     image = create_image()
 
-    plant = create_plant((50, 109), (280, 109))
+    plant = create_plant1((50, 109), (280, 109))
+    #plant = foobar()
 
     image = plot_paths(plant, image)
     image = cv2.transpose(image)
@@ -205,4 +231,5 @@ for i in range(1, columns*rows+1):
     plt.axis('off')
 
 plt.show()
+"""
 #show_image(image)
